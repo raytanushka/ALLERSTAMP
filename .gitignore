@@ -1,0 +1,7 @@
+node_modules/
+.env
+backend/data/db.json
+backend/public/
+.DS_Store
+npm-debug.log*
+*.log
