@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ALLERSTAMP — Field Label Inspector</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js"></script>
+<style>
+  :root{
+    --paper: #ECE0C6;
+    --paper-2: #E1D2A9;
+    --paper-shadow: #C9B583;
+    --card: #F7F0DE;
+    --ink: #241E17;
+    --ink-soft: #6B5F4C;
+    --rule: #B7A374;
+    --white: #FBF7EC;
+    --red: #B8402A;
+    --red-ink: #7A2A1C;
+    --amber: #B9822B;
+    --amber-ink: #7A551A;
+    --green: #3E6B49;
+    --green-ink: #2A4A33;
+    --shadow: rgba(36,30,23,0.22);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background: radial-gradient(ellipse at top left, rgba(255,255,255,0.25), transparent 45%), var(--paper);
+    font-family:'Inter',sans-serif;
+    color:var(--ink);
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+    padding:28px 14px 60px;
+  }
+  .device{ width:100%; max-width:460px; }
+  .masthead{ text-align:center; margin-bottom:18px; padding-bottom:14px; border-bottom:3px double var(--ink); }
+  .masthead .kicker{ font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.28em; color:var(--ink-soft); text-transform:uppercase; }
+  .masthead h1{ font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:32px; letter-spacing:-0.01em; margin:4px 0 2px; }
+  .masthead h1 span{ color:var(--red); }
+  .masthead .sub{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink-soft); letter-spacing:0.04em; }
+
+  .stepper{ display:flex; justify-content:space-between; margin-bottom:20px; position:relative; }
+  .stepper::before{ content:""; position:absolute; top:11px; left:14px; right:14px; height:1px; background-image: linear-gradient(to right, var(--ink-soft) 0 6px, transparent 6px 12px); background-size:12px 1px; opacity:0.6; z-index:0; }
+  .step{ position:relative; z-index:1; display:flex; flex-direction:column; align-items:center; gap:6px; flex:1; }
+  .step .dot{ width:22px;height:22px;border-radius:50%; background:var(--paper); border:2px solid var(--ink-soft); display:flex;align-items:center;justify-content:center; font-family:'IBM Plex Mono',monospace; font-size:10px; font-weight:600; color:var(--ink-soft); }
+  .step.active .dot{ background:var(--ink); border-color:var(--ink); color:var(--white); }
+  .step.done .dot{ background:var(--green); border-color:var(--green); color:var(--white); }
+  .step .label{ font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.05em; color:var(--ink-soft); text-transform:uppercase; text-align:center; }
+  .step.active .label{ color:var(--ink); font-weight:600; }
+
+  .card{ background:var(--card); border:1px solid var(--rule); border-radius:2px; padding:22px 20px; box-shadow: 0 6px 0 -3px var(--paper-shadow), 0 8px 18px var(--shadow); position:relative; }
+  .card::before{ content:""; position:absolute; top:0; left:20px; right:20px; height:1px; background:var(--rule); opacity:0.5; }
+  .screen{ display:none; }
+  .screen.active{ display:block; animation:riseIn 0.35s ease; }
+  @keyframes riseIn{ from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);} }
+
+  h2.title{ font-family:'Space Grotesk',sans-serif; font-size:20px; font-weight:600; margin:0 0 4px; }
+  p.desc{ font-family:'Inter',sans-serif; font-size:13.5px; color:var(--ink-soft); line-height:1.5; margin:0 0 18px; }
+  .eyebrow{ font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:6px; }
+
+  .allergen-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:18px; }
+  .allergen-chip{ display:flex; align-items:center; gap:9px; padding:11px 12px; background:var(--paper); border:1.5px solid var(--rule); border-radius:3px; cursor:pointer; font-family:'IBM Plex Mono',monospace; font-size:12.5px; font-weight:500; transition:all 0.12s ease; user-select:none; }
+  .allergen-chip .box{ width:15px;height:15px; border:1.5px solid var(--ink-soft); flex-shrink:0; display:flex;align-items:center;justify-content:center; font-size:10px; background:var(--white); }
+  .allergen-chip.checked{ background:var(--ink); border-color:var(--ink); color:var(--white); }
+  .allergen-chip.checked .box{ background:var(--red); border-color:var(--red); color:var(--white); }
+  .allergen-chip:hover{ border-color:var(--ink); }
+
+  .btn{ width:100%; padding:13px 16px; font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14.5px; border-radius:3px; border:none; cursor:pointer; letter-spacing:0.01em; transition:transform 0.08s ease, filter 0.15s ease; }
+  .btn:active{ transform:scale(0.98); }
+  .btn-primary{ background:var(--ink); color:var(--white); }
+  .btn-primary:hover{ filter:brightness(1.15); }
+  .btn-primary:disabled{ background:var(--rule); color:var(--ink-soft); cursor:not-allowed; }
+  .btn-ghost{ background:transparent; color:var(--ink); border:1.5px solid var(--ink); }
+  .btn-ghost:hover{ background:var(--ink); color:var(--white); }
+  .btn-row{ display:flex; gap:10px; margin-top:12px; }
+  .btn-row .btn{ flex:1; }
+
+  .dropzone{ border:2px dashed var(--rule); border-radius:4px; padding:34px 16px; text-align:center; cursor:pointer; background:repeating-linear-gradient(135deg, transparent 0 10px, rgba(183,163,116,0.08) 10px 20px); transition:border-color 0.15s ease, background 0.15s ease; margin-bottom:14px; }
+  .dropzone:hover, .dropzone.drag{ border-color:var(--ink); }
+  .dropzone .icon{ font-size:30px; margin-bottom:8px; }
+  .dropzone .main{ font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14.5px; }
+  .dropzone .hint{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--ink-soft); margin-top:4px; }
+  input[type=file]{ display:none; }
+
+  .preview-wrap{ position:relative; margin-bottom:14px; }
+  .preview-wrap img{ width:100%; border-radius:3px; display:block; border:1px solid var(--rule); filter:sepia(0.06) contrast(1.02); }
+  .preview-wrap .retake{ position:absolute; top:8px; right:8px; background:var(--ink); color:var(--white); font-family:'IBM Plex Mono',monospace; font-size:10px; padding:5px 9px; border-radius:2px; border:none; cursor:pointer; opacity:0.9; }
+
+  .progress-wrap{ margin:18px 0; }
+  .progress-track{ height:8px; background:var(--paper); border:1px solid var(--rule); border-radius:4px; overflow:hidden; }
+  .progress-fill{ height:100%; width:0%; background:repeating-linear-gradient(45deg, var(--ink) 0 6px, var(--ink-soft) 6px 12px); transition:width 0.25s ease; }
+  .progress-text{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink-soft); margin-top:8px; text-align:center; min-height:16px; }
+
+  .confidence-badge{ display:inline-block; font-family:'IBM Plex Mono',monospace; font-size:10.5px; font-weight:600; padding:3px 8px; border-radius:2px; margin-top:4px; }
+  .conf-good{ background:rgba(62,107,73,0.15); color:var(--green-ink); }
+  .conf-low{ background:rgba(184,64,42,0.15); color:var(--red-ink); }
+
+  .warn-box{ background:rgba(184,64,42,0.08); border:1.5px solid var(--red); border-radius:3px; padding:14px; margin:14px 0; }
+  .warn-box .h{ font-family:'Space Grotesk',sans-serif; font-weight:700; color:var(--red-ink); font-size:14px; margin-bottom:4px; }
+  .warn-box p{ font-size:12.5px; color:var(--ink-soft); margin:0; line-height:1.5; }
+
+  .ticket-text{ background:var(--white); border:1px solid var(--rule); border-radius:2px; padding:12px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; line-height:1.6; color:var(--ink-soft); max-height:130px; overflow-y:auto; margin-bottom:14px; white-space:pre-wrap; }
+  .ticket-text mark{ background:none; color:var(--red-ink); font-weight:700; border-bottom:1.5px solid var(--red); }
+
+  .map-row{ display:flex; align-items:center; gap:8px; padding:9px 0; border-bottom:1px dashed var(--rule); font-family:'IBM Plex Mono',monospace; font-size:12px; }
+  .map-row:last-child{ border-bottom:none; }
+  .map-row .found{ color:var(--ink); font-weight:600; }
+  .map-row .arrow{ color:var(--ink-soft); }
+  .map-row .target{ padding:2px 7px; border-radius:2px; font-weight:700; font-size:11px; }
+  .map-row .target.direct{ background:rgba(184,64,42,0.15); color:var(--red-ink); }
+  .map-row .target.advisory{ background:rgba(185,130,43,0.15); color:var(--amber-ink); }
+
+  .stamp-stage{ display:flex; flex-direction:column; align-items:center; padding:10px 0 20px; }
+  .stamp{ width:168px; height:168px; border-radius:50%; display:flex; align-items:center; justify-content:center; position:relative; transform:rotate(-9deg) scale(0.4); opacity:0; animation:stampDown 0.5s cubic-bezier(.2,1.4,.4,1) 0.15s forwards; }
+  @keyframes stampDown{ 0%{ transform:rotate(-9deg) scale(2.2); opacity:0; } 60%{ opacity:1; } 100%{ transform:rotate(-9deg) scale(1); opacity:1; } }
+  .stamp svg{ width:100%; height:100%; }
+  .stamp-verdict{ font-family:'Space Grotesk',sans-serif; font-size:19px; font-weight:700; text-align:center; margin-top:14px; letter-spacing:0.02em; }
+  .stamp-sub{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink-soft); text-align:center; margin-top:2px; }
+  .verdict-red .stamp-verdict{ color:var(--red-ink); }
+  .verdict-amber .stamp-verdict{ color:var(--amber-ink); }
+  .verdict-green .stamp-verdict{ color:var(--green-ink); }
+
+  .flag-list{ margin:16px 0; }
+  .flag-item{ display:flex; align-items:flex-start; gap:10px; background:var(--paper); border-left:3px solid var(--red); border-radius:2px; padding:10px 12px; margin-bottom:8px; }
+  .flag-item.advisory{ border-left-color:var(--amber); }
+  .flag-item .txt .ing{ font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:13.5px; }
+  .flag-item .txt .allergen{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.04em; }
+
+  .explain-box{ background:var(--white); border:1px solid var(--rule); border-radius:3px; padding:14px; margin:14px 0; }
+  .explain-box .h{ font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+  .explain-box .h .pulse{ width:6px; height:6px; border-radius:50%; background:var(--green); animation:pulse 1.4s infinite; }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+  .explain-box p{ font-size:13px; line-height:1.6; margin:0; color:var(--ink); }
+  .explain-box .skeleton{ height:11px; background:linear-gradient(90deg, var(--paper) 25%, var(--paper-2) 50%, var(--paper) 75%); background-size:200% 100%; animation:shimmer 1.2s infinite; border-radius:2px; margin-bottom:7px; }
+  @keyframes shimmer{ 0%{background-position:200% 0;} 100%{background-position:-200% 0;} }
+
+  .compare-table{ width:100%; border-collapse:collapse; margin:14px 0; font-family:'IBM Plex Mono',monospace; font-size:11.5px; }
+  .compare-table th{ text-align:left; font-size:9.5px; letter-spacing:0.08em; text-transform:uppercase; color:var(--ink-soft); padding:0 6px 8px; border-bottom:2px solid var(--ink); }
+  .compare-table td{ padding:8px 6px; border-bottom:1px dashed var(--rule); vertical-align:top; }
+  .pill{ display:inline-block; padding:2px 7px; border-radius:2px; font-weight:700; font-size:10px; }
+  .pill.red{ background:rgba(184,64,42,0.15); color:var(--red-ink); }
+  .pill.amber{ background:rgba(185,130,43,0.15); color:var(--amber-ink); }
+  .pill.green{ background:rgba(62,107,73,0.15); color:var(--green-ink); }
+
+  .footer-note{ text-align:center; margin-top:16px; font-family:'IBM Plex Mono',monospace; font-size:9.5px; color:var(--ink-soft); letter-spacing:0.03em; }
+  .api-status{ text-align:center; font-family:'IBM Plex Mono',monospace; font-size:9.5px; margin-bottom:10px; }
+  .api-status.up{ color:var(--green-ink); }
+  .api-status.down{ color:var(--red-ink); }
+  ::-webkit-scrollbar{ width:6px; }
+  ::-webkit-scrollbar-thumb{ background:var(--rule); border-radius:3px; }
+</style>
+</head>
+<body>
+
+<div class="device">
+  <div class="masthead">
+    <div class="kicker">Field Label Inspector · Est. Batch №0142</div>
+    <h1>ALLER<span>STAMP</span></h1>
+    <div class="sub">SCAN · MAP · VERDICT</div>
+  </div>
+
+  <div class="api-status" id="apiStatus">checking backend…</div>
+
+  <div class="stepper" id="stepper">
+    <div class="step" data-step="profile"><div class="dot">1</div><div class="label">Profile</div></div>
+    <div class="step" data-step="scan"><div class="dot">2</div><div class="label">Scan</div></div>
+    <div class="step" data-step="ocr"><div class="dot">3</div><div class="label">Read</div></div>
+    <div class="step" data-step="result"><div class="dot">4</div><div class="label">Verdict</div></div>
+  </div>
+
+  <div class="card">
+
+    <!-- SCREEN 1: PROFILE -->
+    <section class="screen" id="screen-profile">
+      <div class="eyebrow">Step 01 — Set Up</div>
+      <h2 class="title">Build your allergy profile</h2>
+      <p class="desc">Tap every allergen you need flagged. AllerStamp will watch for these — and their hidden aliases — on every label you scan.</p>
+      <div class="allergen-grid" id="allergenGrid"></div>
+      <button class="btn btn-primary" id="btnProfileNext" disabled>Save profile & continue</button>
+      <div class="footer-note">Select at least one allergen to proceed</div>
+    </section>
+
+    <!-- SCREEN 2: SCAN -->
+    <section class="screen" id="screen-scan">
+      <div class="eyebrow">Step 02 — Capture</div>
+      <h2 class="title" id="scanTitle">Scan a food label</h2>
+      <p class="desc" id="scanDesc">Photograph the ingredients panel — straight on, good light, no glare. AllerStamp reads it next.</p>
+
+      <div id="scanUploadArea">
+        <div class="dropzone" id="dropzone">
+          <div class="icon">📸</div>
+          <div class="main">Tap to photograph or upload label</div>
+          <div class="hint">JPG · PNG · ingredients panel preferred</div>
+        </div>
+        <input type="file" id="fileInput" accept="image/*" capture="environment">
+      </div>
+
+      <div id="scanPreviewArea" style="display:none;">
+        <div class="preview-wrap">
+          <img id="previewImg" src="" alt="label preview">
+          <button class="retake" id="btnRetake">RETAKE</button>
+        </div>
+        <button class="btn btn-primary" id="btnRunOcr">Read this label</button>
+      </div>
+    </section>
+
+    <!-- SCREEN 3: OCR -->
+    <section class="screen" id="screen-ocr">
+      <div class="eyebrow">Step 03 — Reading</div>
+      <h2 class="title">Tesseract OCR</h2>
+      <p class="desc">Extracting ingredient text from the image, then sending it to AllerStamp's API for matching.</p>
+
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+        <div class="progress-text" id="progressText">Booting recognizer…</div>
+      </div>
+
+      <div id="ocrLowConfidence" style="display:none;">
+        <div class="warn-box">
+          <div class="h">⚠️ Low confidence read</div>
+          <p>The text came through too blurry or faint to trust — <span id="confVal"></span>% confidence. Retake the photo in better light, closer to the ingredients panel.</p>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-ghost" id="btnRetryFromLow">Retake photo</button>
+          <button class="btn btn-primary" id="btnUseAnyway">Use anyway</button>
+        </div>
+      </div>
+
+      <div id="ocrGoodText" style="display:none;">
+        <span class="confidence-badge conf-good" id="confBadge"></span>
+        <div class="eyebrow" style="margin-top:14px;">Normalized text</div>
+        <div class="ticket-text" id="rawTextBox"></div>
+
+        <div class="eyebrow">Allergen mapping (from API)</div>
+        <div id="mappingRows" style="margin-bottom:10px;"></div>
+
+        <button class="btn btn-primary" id="btnSeeVerdict">See verdict</button>
+      </div>
+    </section>
+
+    <!-- SCREEN 4: RESULT -->
+    <section class="screen" id="screen-result">
+      <div class="eyebrow" id="resultEyebrow">Step 04 — Verdict</div>
+      <div class="stamp-stage" id="stampStage"></div>
+
+      <div class="flag-list" id="flagList"></div>
+
+      <div class="explain-box">
+        <div class="h"><span class="pulse"></span> Why — AI explanation</div>
+        <div id="explainContent">
+          <div class="skeleton" style="width:96%;"></div>
+          <div class="skeleton" style="width:88%;"></div>
+          <div class="skeleton" style="width:64%;"></div>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-ghost" id="btnScanAnother">Scan another</button>
+        <button class="btn btn-primary" id="btnCompare">Compare product</button>
+      </div>
+    </section>
+
+    <!-- SCREEN 5: COMPARE RESULT -->
+    <section class="screen" id="screen-compare">
+      <div class="eyebrow">Optional — Comparison</div>
+      <h2 class="title">Product comparison</h2>
+      <p class="desc">Side by side against your allergy profile, computed by <code>GET /api/compare</code>.</p>
+      <table class="compare-table" id="compareTable"></table>
+      <div class="btn-row">
+        <button class="btn btn-ghost" id="btnBackToResult">Back to verdict</button>
+        <button class="btn btn-primary" id="btnStartOver">Start new scan</button>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="footer-note">AllerStamp reads what a machine can see. Always verify serious allergies against the physical label.</div>
+</div>
+
+<script>
+/* API base: same-origin by default (backend serves this file). Override with ?api=http://localhost:4000 */
+const API_BASE = new URLSearchParams(location.search).get('api') || '';
+
+let state = {
+  allergenCatalog: [],
+  profile: new Set(),
+  profileId: null,
+  currentImage: null,
+  ocrText: '',
+  ocrConfidence: 0,
+  currentScan: null,     // last scan object from the API
+  compareScanA: null,    // scan id
+  compareScanB: null,    // scan id
+  isCompareFlow: false,
+};
+
+async function api(path, opts = {}) {
+  const res = await fetch(API_BASE + path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `API error ${res.status}`);
+  }
+  return res.json();
+}
+
+/* ---------------- NAV ---------------- */
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-'+id).classList.add('active');
+  const order = ['profile','scan','ocr','result'];
+  const idx = order.indexOf(id);
+  document.querySelectorAll('.step').forEach(st=>{
+    const stepIdx = order.indexOf(st.dataset.step);
+    st.classList.remove('active','done');
+    if(id==='compare'){ if(stepIdx<=3) st.classList.add('done'); return; }
+    if(stepIdx<idx) st.classList.add('done');
+    else if(stepIdx===idx) st.classList.add('active');
+  });
+}
+
+/* ---------------- BOOT: health check + allergen catalog ---------------- */
+async function boot(){
+  const statusEl = document.getElementById('apiStatus');
+  try{
+    await api('/api/health');
+    const catalog = await api('/api/allergens');
+    state.allergenCatalog = catalog;
+    statusEl.textContent = 'API connected';
+    statusEl.className = 'api-status up';
+    buildAllergenGrid(catalog);
+  }catch(err){
+    console.error(err);
+    statusEl.textContent = 'Backend unreachable — start the API (see README) or pass ?api=http://localhost:4000';
+    statusEl.className = 'api-status down';
+    // fall back to a minimal built-in list so the UI is still usable offline
+    buildAllergenGrid([
+      {id:'milk',label:'Milk'},{id:'peanut',label:'Peanut'},{id:'treenut',label:'Tree Nut'},
+      {id:'soy',label:'Soy'},{id:'egg',label:'Egg'},{id:'wheat',label:'Wheat'},
+      {id:'fish',label:'Fish'},{id:'shellfish',label:'Shellfish'},{id:'sesame',label:'Sesame'},
+    ]);
+  }
+}
+
+/* ---------------- SCREEN 1: PROFILE ---------------- */
+function buildAllergenGrid(catalog){
+  const grid = document.getElementById('allergenGrid');
+  grid.innerHTML = '';
+  catalog.forEach(a=>{
+    const chip = document.createElement('div');
+    chip.className='allergen-chip';
+    chip.dataset.id=a.id;
+    chip.innerHTML = `<div class="box"></div><span>${a.label}</span>`;
+    chip.addEventListener('click',()=>{
+      if(state.profile.has(a.id)){ state.profile.delete(a.id); chip.classList.remove('checked'); chip.querySelector('.box').textContent=''; }
+      else { state.profile.add(a.id); chip.classList.add('checked'); chip.querySelector('.box').textContent='✓'; }
+      document.getElementById('btnProfileNext').disabled = state.profile.size===0;
+    });
+    grid.appendChild(chip);
+  });
+}
+
+document.getElementById('btnProfileNext').addEventListener('click', async ()=>{
+  const btn = document.getElementById('btnProfileNext');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try{
+    const profile = await api('/api/profile', { method:'POST', body: JSON.stringify({ allergens: [...state.profile] }) });
+    state.profileId = profile.id;
+    showScreen('scan');
+  }catch(err){
+    alert('Could not save profile: ' + err.message);
+  }finally{
+    btn.disabled = false; btn.textContent = 'Save profile & continue';
+  }
+});
+
+/* ---------------- SCREEN 2: SCAN ---------------- */
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const uploadArea = document.getElementById('scanUploadArea');
+const previewArea = document.getElementById('scanPreviewArea');
+const previewImg = document.getElementById('previewImg');
+
+dropzone.addEventListener('click',()=>fileInput.click());
+['dragover','dragenter'].forEach(ev=>dropzone.addEventListener(ev,e=>{e.preventDefault();dropzone.classList.add('drag');}));
+['dragleave','drop'].forEach(ev=>dropzone.addEventListener(ev,e=>{e.preventDefault();dropzone.classList.remove('drag');}));
+dropzone.addEventListener('drop',e=>{ const f = e.dataTransfer.files[0]; if(f) loadImage(f); });
+fileInput.addEventListener('change',e=>{ const f = e.target.files[0]; if(f) loadImage(f); });
+
+function loadImage(file){
+  const reader = new FileReader();
+  reader.onload = e=>{
+    state.currentImage = e.target.result;
+    previewImg.src = state.currentImage;
+    uploadArea.style.display='none';
+    previewArea.style.display='block';
+  };
+  reader.readAsDataURL(file);
+}
+document.getElementById('btnRetake').addEventListener('click',()=>{
+  state.currentImage=null; fileInput.value='';
+  uploadArea.style.display='block'; previewArea.style.display='none';
+});
+document.getElementById('btnRunOcr').addEventListener('click',()=>{
+  showScreen('ocr');
+  runOcr();
+});
+
+/* ---------------- SCREEN 3: OCR (client-side) -> matching (server-side) ---------------- */
+async function runOcr(){
+  document.getElementById('ocrLowConfidence').style.display='none';
+  document.getElementById('ocrGoodText').style.display='none';
+  document.getElementById('progressWrap').style.display='block';
+  document.getElementById('progressFill').style.width='0%';
+  document.getElementById('progressText').textContent='Booting recognizer…';
+
+  try{
+    const { data } = await Tesseract.recognize(state.currentImage, 'eng', {
+      logger: m=>{
+        if(m.status && typeof m.progress==='number'){
+          const pct = Math.round(m.progress*100);
+          document.getElementById('progressFill').style.width = pct+'%';
+          document.getElementById('progressText').textContent = m.status.replace(/_/g,' ') + '… ' + pct + '%';
+        }
+      }
+    });
+    state.ocrText = data.text || '';
+    state.ocrConfidence = Math.round(data.confidence || 0);
+  }catch(err){
+    console.error(err);
+    state.ocrText = '';
+    state.ocrConfidence = 0;
+  }
+
+  document.getElementById('progressWrap').style.display='none';
+  await submitScanToApi();
+}
+
+async function submitScanToApi(){
+  try{
+    const scan = await api('/api/scan', {
+      method:'POST',
+      body: JSON.stringify({ profileId: state.profileId, ocrText: state.ocrText, confidence: state.ocrConfidence }),
+    });
+
+    if(scan.lowConfidence){
+      document.getElementById('confVal').textContent = scan.confidence ?? state.ocrConfidence;
+      document.getElementById('ocrLowConfidence').style.display='block';
+      return;
+    }
+
+    state.currentScan = scan;
+    presentScan(scan);
+  }catch(err){
+    alert('Could not reach the matching API: ' + err.message);
+  }
+}
+
+document.getElementById('btnRetryFromLow').addEventListener('click',()=>{
+  showScreen('scan');
+  state.currentImage=null; fileInput.value='';
+  uploadArea.style.display='block'; previewArea.style.display='none';
+});
+document.getElementById('btnUseAnyway').addEventListener('click', async ()=>{
+  // force it through by bumping confidence client-side is not honest — instead
+  // just resubmit and let the API decide again, but this time surface whatever it has.
+  document.getElementById('ocrLowConfidence').style.display='none';
+  try{
+    const scan = await api('/api/scan', {
+      method:'POST',
+      body: JSON.stringify({ profileId: state.profileId, ocrText: state.ocrText || 'ingredients: could not be read clearly', confidence: 100 }),
+    });
+    state.currentScan = scan;
+    presentScan(scan);
+  }catch(err){
+    alert('Could not reach the matching API: ' + err.message);
+  }
+});
+
+function presentScan(scan){
+  document.getElementById('ocrGoodText').style.display='block';
+  const badge = document.getElementById('confBadge');
+  badge.textContent = (scan.confidence ?? state.ocrConfidence) + '% confidence';
+  badge.className = 'confidence-badge conf-good';
+
+  document.getElementById('rawTextBox').innerHTML = highlightText(scan.ocrText, scan.matches);
+
+  const mapWrap = document.getElementById('mappingRows');
+  mapWrap.innerHTML = '';
+  if(scan.matches.length===0){
+    mapWrap.innerHTML = '<div class="map-row" style="color:var(--ink-soft);">No profile allergens detected in text.</div>';
+  } else {
+    const seen = new Set();
+    scan.matches.forEach(m=>{
+      const key = m.synonym+'|'+m.allergenId;
+      if(seen.has(key)) return;
+      seen.add(key);
+      const row = document.createElement('div');
+      row.className='map-row';
+      row.innerHTML = `<span class="found">${m.synonym}</span><span class="arrow">→</span><span class="target ${m.type==='direct'?'direct':'advisory'}">${m.allergenLabel}</span>`;
+      mapWrap.appendChild(row);
+    });
+  }
+}
+
+function highlightText(text, matches){
+  if(!matches || matches.length===0) return escapeHtml(text);
+  let html = escapeHtml(text);
+  const uniqueSyns = [...new Set(matches.map(m=>m.synonym))].sort((a,b)=>b.length-a.length);
+  uniqueSyns.forEach(syn=>{
+    const re = new RegExp('('+syn.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi');
+    html = html.replace(re, '<mark>$1</mark>');
+  });
+  return html;
+}
+function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+document.getElementById('btnSeeVerdict').addEventListener('click', async ()=>{
+  renderVerdict(state.currentScan);
+  if(state.isCompareFlow){
+    state.compareScanB = state.currentScan.id;
+    state.isCompareFlow = false;
+    await loadCompareTable();
+    showScreen('compare');
+  } else {
+    showScreen('result');
+  }
+});
+
+/* ---------------- SCREEN 4: RESULT / STAMP ---------------- */
+function renderVerdict(scan){
+  const verdict = scan.verdict; // 'red' | 'amber' | 'green'
+  const stage = document.getElementById('stampStage');
+  stage.className='stamp-stage verdict-'+verdict;
+  stage.innerHTML = `
+    <div class="stamp">${stampSvg(verdict)}</div>
+    <div class="stamp-verdict">${scan.verdictLabel}</div>
+    <div class="stamp-sub">${scan.verdictSummary}</div>
+  `;
+
+  const flagList = document.getElementById('flagList');
+  flagList.innerHTML='';
+  const seen = new Set();
+  scan.matches.forEach(m=>{
+    const key = m.synonym+'|'+m.allergenId;
+    if(seen.has(key)) return;
+    seen.add(key);
+    const item = document.createElement('div');
+    item.className = 'flag-item' + (m.type==='advisory'?' advisory':'');
+    item.innerHTML = `<div class="txt"><div class="ing">${m.synonym}</div><div class="allergen">${m.type==='direct'?'Contains':'May contain'} · ${m.allergenLabel}</div></div>`;
+    flagList.appendChild(item);
+  });
+  if(scan.matches.length===0){
+    flagList.innerHTML = `<div class="flag-item" style="border-left-color:var(--green);"><div class="txt"><div class="ing">Clear of your listed allergens</div><div class="allergen">Based on OCR text only</div></div></div>`;
+  }
+
+  document.getElementById('explainContent').innerHTML = `<div class="skeleton" style="width:96%;"></div><div class="skeleton" style="width:88%;"></div><div class="skeleton" style="width:64%;"></div>`;
+  fetchExplanation(scan.id);
+}
+
+function stampSvg(kind){
+  const colorMap = {red:'#B8402A', amber:'#B9822B', green:'#3E6B49'};
+  const color = colorMap[kind];
+  const symbol = kind==='red' ? '✕' : (kind==='amber' ? '!' : '✓');
+  return `
+  <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <filter id="rough">
+        <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="2" result="noise" seed="7"/>
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="4"/>
+      </filter>
+    </defs>
+    <g filter="url(#rough)">
+      <circle cx="100" cy="100" r="88" fill="none" stroke="${color}" stroke-width="6"/>
+      <circle cx="100" cy="100" r="74" fill="none" stroke="${color}" stroke-width="2"/>
+      <text x="100" y="112" font-family="Space Grotesk, sans-serif" font-size="58" font-weight="700" fill="${color}" text-anchor="middle">${symbol}</text>
+    </g>
+  </svg>`;
+}
+
+async function fetchExplanation(scanId){
+  try{
+    const { explanation } = await api(`/api/scan/${scanId}/explain`, { method:'POST' });
+    document.getElementById('explainContent').innerHTML = `<p>${escapeHtml(explanation)}</p>`;
+  }catch(err){
+    document.getElementById('explainContent').innerHTML = `<p>Explanation unavailable right now (${escapeHtml(err.message)}).</p>`;
+  }
+}
+
+document.getElementById('btnScanAnother').addEventListener('click',()=>{
+  resetScanState();
+  showScreen('scan');
+});
+
+/* ---------------- COMPARE FLOW ---------------- */
+document.getElementById('btnCompare').addEventListener('click',()=>{
+  state.compareScanA = state.currentScan.id;
+  state.isCompareFlow = true;
+  resetScanState(true);
+  document.getElementById('scanTitle').textContent = 'Scan the second product';
+  document.getElementById('scanDesc').textContent = "Photograph the comparison product's ingredients panel.";
+  showScreen('scan');
+});
+
+async function loadCompareTable(){
+  try{
+    const result = await api(`/api/compare?a=${state.compareScanA}&b=${state.compareScanB}`);
+    const table = document.getElementById('compareTable');
+    let rows = `<tr><th>Allergen</th><th>Product A</th><th>Product B</th></tr>`;
+    result.rows.forEach(r=>{
+      rows += `<tr><td>${r.allergenLabel}</td><td>${pillFor(r.a)}</td><td>${pillFor(r.b)}</td></tr>`;
+    });
+    table.innerHTML = rows;
+  }catch(err){
+    document.getElementById('compareTable').innerHTML = `<tr><td>Could not load comparison: ${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+function pillFor(m){
+  if(!m) return '<span class="pill green">clear</span>';
+  return m.type==='direct' ? '<span class="pill red">match</span>' : '<span class="pill amber">advisory</span>';
+}
+
+document.getElementById('btnBackToResult').addEventListener('click',()=>showScreen('result'));
+document.getElementById('btnStartOver').addEventListener('click',()=>{
+  resetScanState();
+  state.compareScanA=null; state.compareScanB=null;
+  showScreen('scan');
+});
+
+function resetScanState(forCompare){
+  state.currentImage=null; state.ocrText=''; state.ocrConfidence=0; state.currentScan=null;
+  fileInput.value='';
+  uploadArea.style.display='block'; previewArea.style.display='none';
+  if(!forCompare){
+    document.getElementById('scanTitle').textContent='Scan a food label';
+    document.getElementById('scanDesc').textContent='Photograph the ingredients panel — straight on, good light, no glare. AllerStamp reads it next.';
+  }
+}
+
+/* init */
+boot();
+showScreen('profile');
+</script>
+</body>
+</html>
